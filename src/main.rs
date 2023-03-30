@@ -4,7 +4,12 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+const PNG_SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
 const PNG_IEND: [u8; 12] = [0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82];
+
+fn check_png_signature(bytes: &[u8]) -> bool {
+    bytes.starts_with(&PNG_SIGNATURE)
+}
 
 fn iend_count(bytes: &[u8]) -> u32 {
     let mut count = 0;
@@ -16,13 +21,21 @@ fn iend_count(bytes: &[u8]) -> u32 {
     count
 }
 
-fn check_file(path: &Path) -> io::Result<u32> {
+struct PngCheckResult {
+    signature_ok: bool,
+    iend_count: u32,
+}
+
+fn check_file(path: &Path) -> io::Result<PngCheckResult> {
     let mut file = File::open(path)?;
 
     let mut bytes: Vec<u8> = vec!();
     file.read_to_end(&mut bytes)?;
 
-    Ok(iend_count(&bytes))
+    Ok(PngCheckResult {
+        signature_ok: check_png_signature(&bytes),
+        iend_count: iend_count(&bytes),
+    })
 }
 
 fn main() {
@@ -62,19 +75,25 @@ fn main() {
     }
 
     for path in paths {
-        match check_file(&path) {
-            Ok(0) => {
-                println!("{}: Malformed png, no end", path.display());
-            }
-            Ok(1) => {
-                //println!("{}: ok", path.display());
-            }
-            Ok(count) => {
-                println!("{}: Bad crop detected! {} png ends detected", path.display(), count);
-            }
+        let result = match check_file(&path) {
+            Ok(result) => { result }
             Err(err) => {
                 eprintln!("{}: Error: {}", path.display(), err);
+                continue;
             }
+        };
+
+        if !result.signature_ok {
+            //println!("{}: Malformed png, no signature", path.display());
+            continue;
+        }
+
+        match result.iend_count {
+            0 => { println!("{}: Malformed png, no end", path.display()); }
+            1 => {
+                //println!("{}: Ok", path.display());
+            }
+            _ => { println!("{}: Bad crop! {} png ends detected", path.display(), result.iend_count); }
         }
     }
 }
