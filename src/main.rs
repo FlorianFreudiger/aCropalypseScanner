@@ -1,42 +1,9 @@
-use std::fs::File;
-use std::io;
-use std::io::Read;
+mod png;
+
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-const PNG_SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
-const PNG_IEND: [u8; 12] = [0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82];
-
-fn check_png_signature(bytes: &[u8]) -> bool {
-    bytes.starts_with(&PNG_SIGNATURE)
-}
-
-fn iend_count(bytes: &[u8]) -> u32 {
-    let mut count = 0;
-    for w in bytes.windows(PNG_IEND.len()) {
-        if w == PNG_IEND {
-            count += 1;
-        }
-    }
-    count
-}
-
-struct PngCheckResult {
-    signature_ok: bool,
-    iend_count: u32,
-}
-
-fn check_file(path: &Path) -> io::Result<PngCheckResult> {
-    let mut file = File::open(path)?;
-
-    let mut bytes: Vec<u8> = vec!();
-    file.read_to_end(&mut bytes)?;
-
-    Ok(PngCheckResult {
-        signature_ok: check_png_signature(&bytes),
-        iend_count: iend_count(&bytes),
-    })
-}
+use crate::png::check_file;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -83,17 +50,17 @@ fn main() {
             }
         };
 
-        if !result.signature_ok {
+        if !result.signature_ok() {
             //println!("{}: Malformed png, no signature", path.display());
             continue;
         }
 
-        match result.iend_count {
+        match result.iend_count() {
             0 => { println!("{}: Malformed png, no end", path.display()); }
             1 => {
                 //println!("{}: Ok", path.display());
             }
-            _ => { println!("{}: Bad crop! {} png ends detected", path.display(), result.iend_count); }
+            _ => { println!("{}: Bad crop! {} png ends detected", path.display(), result.iend_count()); }
         }
     }
 }
